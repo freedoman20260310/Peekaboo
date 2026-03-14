@@ -320,6 +320,7 @@ struct SpecialKeyView: View {
 // MARK: - Preview
 
 #if DEBUG
+#if ENABLE_PREVIEWS
 #Preview("Modern Theme") {
     TypeAnimationView(
         keys: ["H", "e", "l", "l", "o", " ", "W", "o", "r", "l", "d"],
@@ -328,7 +329,9 @@ struct SpecialKeyView: View {
         .frame(width: 600, height: 300)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Classic Theme") {
     TypeAnimationView(
         keys: ["T", "e", "s", "t", "{return}", "1", "2", "3"],
@@ -337,7 +340,9 @@ struct SpecialKeyView: View {
         .frame(width: 600, height: 300)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Ghostly Theme") {
     TypeAnimationView(
         keys: ["G", "h", "o", "s", "t", "{tab}", "M", "o", "d", "e"],
@@ -346,4 +351,5 @@ struct SpecialKeyView: View {
         .frame(width: 600, height: 300)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 #endif

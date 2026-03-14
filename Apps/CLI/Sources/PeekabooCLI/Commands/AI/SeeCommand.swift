@@ -4,6 +4,7 @@ import AXorcist
 import Commander
 import CoreGraphics
 import Foundation
+import os
 import PeekabooCore
 import PeekabooFoundation
 import ScreenCaptureKit
@@ -148,22 +149,8 @@ struct SeeCommand: ApplicationResolvable, ErrorHandlingCommand, RuntimeOptionsCo
         let commandCopy = self
 
         do {
-            try await withThrowingTaskGroup(of: Void.self) { group in
-                group.addTask {
-                    try await commandCopy.runImpl(startTime: startTime, logger: logger)
-                }
-                group.addTask {
-                    try await Task.sleep(nanoseconds: UInt64(overallTimeout * 1_000_000_000))
-                    throw CaptureError.detectionTimedOut(overallTimeout)
-                }
-
-                do {
-                    _ = try await group.next()
-                    group.cancelAll()
-                } catch {
-                    group.cancelAll()
-                    throw error
-                }
+            try await Self.withSafeTimeout(seconds: overallTimeout) {
+                try await commandCopy.runImpl(startTime: startTime, logger: logger)
             }
         } catch {
             logger.operationComplete(
@@ -471,7 +458,7 @@ extension SeeCommand {
         guard self.verbose else { return nil }
 
         do {
-            return try await Self.withWallClockTimeout(seconds: 2.5) {
+            return try await Self.withSafeTimeout(seconds: 2.5) {
                 try Task.checkCancellation()
                 return await self.getMenuBarItemsSummary()
             }
@@ -485,26 +472,54 @@ extension SeeCommand {
         }
     }
 
-    /// Timeout helper that is not MainActor-bound, so it can still fire if the main actor is blocked.
-    static func withWallClockTimeout<T: Sendable>(
+    /// Timeout helper that avoids continuation leaks by using unstructured Tasks
+    /// instead of task groups. The operation is allowed to complete naturally in
+    /// the background even after a timeout, preventing Apple framework APIs from
+    /// leaking internal continuations.
+    static func withSafeTimeout<T: Sendable>(
         seconds: TimeInterval,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
+        let state = OSAllocatedUnfairLock(initialState: false)
+
+        return try await withUnsafeThrowingContinuation { (continuation: UnsafeContinuation<T, any Error>) in
+            let cont = continuation
+
+            let operationTask = Task {
+                do {
+                    let result = try await operation()
+                    let isFirst = state.withLock { done in
+                        if done { return false }
+                        done = true
+                        return true
+                    }
+                    if isFirst {
+                        cont.resume(returning: result)
+                    }
+                } catch {
+                    let isFirst = state.withLock { done in
+                        if done { return false }
+                        done = true
+                        return true
+                    }
+                    if isFirst {
+                        cont.resume(throwing: error)
+                    }
+                }
             }
 
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                throw CaptureError.detectionTimedOut(seconds)
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                let isFirst = state.withLock { done in
+                    if done { return false }
+                    done = true
+                    return true
+                }
+                if isFirst {
+                    cont.resume(throwing: CaptureError.detectionTimedOut(seconds))
+                    operationTask.cancel()
+                }
             }
-
-            guard let result = try await group.next() else {
-                throw CaptureError.detectionTimedOut(seconds)
-            }
-            group.cancelAll()
-            return result
         }
     }
 

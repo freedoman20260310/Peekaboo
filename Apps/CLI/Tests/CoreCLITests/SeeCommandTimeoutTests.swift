@@ -3,11 +3,11 @@ import PeekabooFoundation
 import Testing
 @testable import PeekabooCLI
 
-@Suite("SeeCommand wall-clock timeout")
+@Suite("SeeCommand safe timeout")
 struct SeeCommandTimeoutTests {
     @Test("returns result before timeout")
     func returnsBeforeTimeout() async throws {
-        let result = try await SeeCommand.withWallClockTimeout(seconds: 1.0) {
+        let result = try await SeeCommand.withSafeTimeout(seconds: 1.0) {
             "ok"
         }
         #expect(result == "ok")
@@ -16,7 +16,7 @@ struct SeeCommandTimeoutTests {
     @Test("throws detectionTimedOut when operation exceeds deadline")
     func timesOut() async {
         let error = await #expect(throws: CaptureError.self) {
-            try await SeeCommand.withWallClockTimeout(seconds: 0.05) {
+            try await SeeCommand.withSafeTimeout(seconds: 0.05) {
                 try await Task.sleep(nanoseconds: 200_000_000)
                 return "late"
             }

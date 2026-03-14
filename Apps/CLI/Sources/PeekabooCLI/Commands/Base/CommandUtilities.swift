@@ -2,6 +2,7 @@ import AppKit
 import Commander
 import CoreGraphics
 import Foundation
+import os
 import PeekabooCore
 import PeekabooFoundation
 
@@ -668,31 +669,52 @@ enum DockServiceBridge {
 
 // MARK: - Timeout Utilities
 
-/// Execute an async operation with a timeout
+/// Execute an async operation with a timeout. Uses unstructured Tasks to avoid
+/// continuation leaks when Apple framework APIs hold internal continuations.
 func withTimeout<T: Sendable>(
     seconds: TimeInterval,
     operation: @escaping @Sendable () async throws -> T
 ) async throws -> T {
-    // Execute an async operation with a timeout
-    let task = Task {
-        try await operation()
-    }
+    let state = OSAllocatedUnfairLock(initialState: false)
 
-    let timeoutTask = Task {
-        try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-        task.cancel()
-    }
+    return try await withUnsafeThrowingContinuation { (continuation: UnsafeContinuation<T, any Error>) in
+        let cont = continuation
 
-    do {
-        let result = try await task.value
-        timeoutTask.cancel()
-        return result
-    } catch {
-        timeoutTask.cancel()
-        if task.isCancelled {
-            throw CaptureError.captureFailure("Operation timed out after \(seconds) seconds")
+        let operationTask = Task {
+            do {
+                let result = try await operation()
+                let isFirst = state.withLock { done in
+                    if done { return false }
+                    done = true
+                    return true
+                }
+                if isFirst {
+                    cont.resume(returning: result)
+                }
+            } catch {
+                let isFirst = state.withLock { done in
+                    if done { return false }
+                    done = true
+                    return true
+                }
+                if isFirst {
+                    cont.resume(throwing: error)
+                }
+            }
         }
-        throw error
+
+        Task {
+            try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+            let isFirst = state.withLock { done in
+                if done { return false }
+                done = true
+                return true
+            }
+            if isFirst {
+                cont.resume(throwing: CaptureError.captureFailure("Operation timed out after \(seconds) seconds"))
+                operationTask.cancel()
+            }
+        }
     }
 }
 

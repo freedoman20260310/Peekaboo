@@ -13,7 +13,9 @@ extension SeeCommand {
         var results: [CaptureResult] = []
 
         // Get available displays from the screen capture service
-        let content = try await SCShareableContent.current
+        let content = try await withTimeout(seconds: 5.0) {
+            try await SCShareableContent.current
+        }
         let displays = content.displays
 
         self.logger.info("Found \(displays.count) display(s) to capture")

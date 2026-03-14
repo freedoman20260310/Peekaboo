@@ -131,7 +131,7 @@ public final class PeekabooAIService {
         self.resolvedModels
     }
 
-    private static func parseProviderEntry(_ entry: String) -> LanguageModel? {
+    private static func parseProviderEntry(_ entry: String, configuration: ConfigurationManager? = nil) -> LanguageModel? {
         if let parsed = AIProviderParser.parse(entry) {
             let provider = parsed.provider.lowercased()
             let modelString = parsed.model
@@ -164,6 +164,27 @@ public final class PeekabooAIService {
             case "lmstudio":
                 return .lmstudio(.custom(modelString))
             default:
+                // Check custom providers from configuration
+                if let config = configuration,
+                   let customProvider = config.getCustomProvider(id: provider),
+                   customProvider.enabled {
+                    // Resolve the API key and inject it into TachikomaConfiguration
+                    if let resolvedKey = config.resolveCredentialReference(customProvider.options.apiKey),
+                       !resolvedKey.isEmpty {
+                        let compatibleId: String = switch customProvider.type {
+                        case .openai: "openai_compatible"
+                        case .anthropic: "anthropic_compatible"
+                        }
+                        TachikomaConfiguration.current.setAPIKey(resolvedKey, for: .custom(compatibleId))
+                    }
+                    let baseURL = customProvider.options.baseURL
+                    switch customProvider.type {
+                    case .openai:
+                        return .openaiCompatible(modelId: modelString, baseURL: baseURL)
+                    case .anthropic:
+                        return .anthropicCompatible(modelId: modelString, baseURL: baseURL)
+                    }
+                }
                 return nil
             }
         }
@@ -177,7 +198,7 @@ public final class PeekabooAIService {
         let parsed = providers
             .split(separator: ",")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .compactMap { self.parseProviderEntry($0) }
+            .compactMap { self.parseProviderEntry($0, configuration: configuration) }
 
         if !parsed.isEmpty { return parsed }
 

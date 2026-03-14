@@ -1015,7 +1015,9 @@ public final class ScreenCaptureService: ScreenCaptureServiceProtocol {
             scale: CaptureScalePreference) async throws -> CaptureResult
         {
             self.logger.debug("Finding display containing rect", correlationId: correlationId)
-            let content = try await SCShareableContent.current
+            let content = try await withTimeout(seconds: 5.0) {
+                try await SCShareableContent.current
+            }
             guard let display = content.displays.first(where: { $0.frame.contains(rect) }) else {
                 self.logger.error(
                     "No display contains the specified area",
@@ -1520,7 +1522,9 @@ public final class ScreenCaptureService: ScreenCaptureServiceProtocol {
             displayIndex: Int,
             correlationId: String) async throws -> CGImage
         {
-            let content = try await SCShareableContent.current
+            let content = try await withTimeout(seconds: 5.0) {
+                try await SCShareableContent.current
+            }
             let displays = content.displays
             guard !displays.isEmpty else {
                 throw OperationError.captureFailed(reason: "No ScreenCaptureKit displays available")
@@ -1576,7 +1580,9 @@ public final class ScreenCaptureService: ScreenCaptureServiceProtocol {
             windowID: CGWindowID,
             correlationId: String) async throws -> CGImage
         {
-            let content = try await SCShareableContent.current
+            let content = try await withTimeout(seconds: 5.0) {
+                try await SCShareableContent.current
+            }
             guard let scWindow = content.windows.first(where: { $0.windowID == windowID }) else {
                 throw OperationError.captureFailed(
                     reason: "Failed to locate window \(windowID) in ScreenCaptureKit shareable content")

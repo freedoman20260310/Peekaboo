@@ -99,7 +99,7 @@ struct AgentCommand: RuntimeOptionsConfigurable {
     @Option(name: .long, help: "Queue mode for queued prompts: one-at-a-time (default) or all")
     var queueMode: String?
 
-    @Option(name: .long, help: "AI model to use (allowed: gpt-5.1, claude-opus-4-5, or gemini-3-flash)")
+    @Option(name: .long, help: "AI model to use (e.g. gpt-5.1, claude-opus-4-5, gemini-3-flash, or customProvider/model)")
     var model: String?
     @Flag(name: .long, help: "Resume the most recent session (use with task argument)")
     var resume = false
@@ -920,14 +920,15 @@ extension AgentCommand {
         let hasOpenAI = configuration.getOpenAIAPIKey()?.isEmpty == false
         let hasAnthropic = configuration.getAnthropicAPIKey()?.isEmpty == false
         let hasGemini = configuration.getGeminiAPIKey()?.isEmpty == false
-        return hasOpenAI || hasAnthropic || hasGemini
+        let hasCustom = !configuration.listCustomProviders().filter({ $0.value.enabled }).isEmpty
+        return hasOpenAI || hasAnthropic || hasGemini || hasCustom
     }
 
     private func emitAgentUnavailableMessage() {
         if self.jsonOutput {
             let error = [
                 "success": false,
-                "error": "Agent service not available. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY."
+                "error": "Agent service not available. Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY, or configure a custom provider."
             ] as [String: Any]
             if let jsonData = try? JSONSerialization.data(withJSONObject: error, options: .prettyPrinted),
                let jsonString = String(data: jsonData, encoding: .utf8) {
@@ -938,7 +939,7 @@ extension AgentCommand {
         } else {
             let errorPrefix = [
                 "\(TerminalColor.red)Error: Agent service not available.",
-                " Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY."
+                " Please set OPENAI_API_KEY, ANTHROPIC_API_KEY, or GEMINI_API_KEY, or configure a custom provider."
             ].joined()
             let errorMessageLine = [errorPrefix, "\(TerminalColor.reset)"].joined()
             print(errorMessageLine)
@@ -947,9 +948,15 @@ extension AgentCommand {
 
     // MARK: - Model Parsing
 
+    @MainActor
     func parseModelString(_ modelString: String) -> LanguageModel? {
         let trimmed = modelString.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
+
+        // Check if this is a custom provider model (e.g. "vapi/claude-sonnet-4-6")
+        if let customModel = self.resolveCustomProviderModel(trimmed) {
+            return customModel
+        }
 
         guard let parsed = LanguageModel.parse(from: trimmed) else {
             return nil
@@ -975,11 +982,55 @@ extension AgentCommand {
         return nil
     }
 
+    /// Resolve a "customProvider/model" string against configured custom providers.
+    @MainActor
+    private func resolveCustomProviderModel(_ modelString: String) -> LanguageModel? {
+        guard let providerConfig = AIProviderParser.parse(modelString) else { return nil }
+        let providerId = providerConfig.provider.lowercased()
+        let modelId = providerConfig.model
+
+        // Bail out if runtime is not configured (e.g. in unit tests)
+        guard let runtime = self.runtime else { return nil }
+        let configuration = runtime.services.configuration
+        guard let customProvider = configuration.getCustomProvider(id: providerId),
+              customProvider.enabled else {
+            return nil
+        }
+
+        // Resolve the API key and inject it into TachikomaConfiguration
+        if let resolvedKey = configuration.resolveCredentialReference(customProvider.options.apiKey),
+           !resolvedKey.isEmpty {
+            let compatibleId: String = switch customProvider.type {
+            case .openai: "openai_compatible"
+            case .anthropic: "anthropic_compatible"
+            }
+            TachikomaConfiguration.current.setAPIKey(resolvedKey, for: .custom(compatibleId))
+        }
+
+        let baseURL = customProvider.options.baseURL
+
+        switch customProvider.type {
+        case .openai:
+            return .openaiCompatible(modelId: modelId, baseURL: baseURL)
+        case .anthropic:
+            return .anthropicCompatible(modelId: modelId, baseURL: baseURL)
+        }
+    }
+
+    @MainActor
     func validatedModelSelection() throws -> LanguageModel? {
         guard let modelString = self.model else { return nil }
         guard let parsed = self.parseModelString(modelString) else {
+            let customProviderIds = self.services.configuration
+                .listCustomProviders()
+                .filter { $0.value.enabled }
+                .keys
+                .sorted()
+            let customHint = customProviderIds.isEmpty
+                ? ""
+                : ", or custom providers: \(customProviderIds.joined(separator: ", "))"
             throw PeekabooError.invalidInput(
-                "Unsupported model '\(modelString)'. Allowed values: \(Self.allowedModelList)"
+                "Unsupported model '\(modelString)'. Allowed values: \(Self.allowedModelList)\(customHint)"
             )
         }
         return parsed
@@ -1031,6 +1082,9 @@ extension AgentCommand {
             return configuration.getAnthropicAPIKey()?.isEmpty == false
         case .google:
             return configuration.getGeminiAPIKey()?.isEmpty == false
+        case .openaiCompatible, .anthropicCompatible, .custom:
+            // Custom/compatible providers carry their own credentials
+            return true
         default:
             return false
         }
@@ -1044,6 +1098,10 @@ extension AgentCommand {
             "Anthropic"
         case .google:
             "Google"
+        case let .openaiCompatible(_, baseURL):
+            "Custom provider (\(baseURL))"
+        case let .anthropicCompatible(_, baseURL):
+            "Custom provider (\(baseURL))"
         default:
             "the selected provider"
         }
@@ -1057,6 +1115,8 @@ extension AgentCommand {
             "ANTHROPIC_API_KEY"
         case .google:
             "GEMINI_API_KEY"
+        case .openaiCompatible, .anthropicCompatible, .custom:
+            "the configured custom provider API key"
         default:
             "provider API key"
         }

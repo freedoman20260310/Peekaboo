@@ -86,18 +86,24 @@ struct ScreenshotFlashView: View {
 // MARK: - Preview
 
 #if DEBUG
+#if ENABLE_PREVIEWS
 #Preview("Normal Flash") {
     ScreenshotFlashView(showGhost: false, intensity: 1.0)
         .frame(width: 400, height: 300)
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("With Ghost") {
     ScreenshotFlashView(showGhost: true, intensity: 1.0)
         .frame(width: 400, height: 300)
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Half Intensity") {
     ScreenshotFlashView(showGhost: false, intensity: 0.5)
         .frame(width: 400, height: 300)
 }
+#endif
 #endif

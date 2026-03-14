@@ -127,21 +127,27 @@ struct ClickAnimationView: View {
 // MARK: - Preview
 
 #if DEBUG
+#if ENABLE_PREVIEWS
 #Preview("Single Click") {
     ClickAnimationView(clickType: .single, animationSpeed: 1.0)
         .frame(width: 300, height: 300)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Double Click") {
     ClickAnimationView(clickType: .double, animationSpeed: 1.0)
         .frame(width: 300, height: 300)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Right Click") {
     ClickAnimationView(clickType: .right, animationSpeed: 1.0)
         .frame(width: 300, height: 300)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 #endif

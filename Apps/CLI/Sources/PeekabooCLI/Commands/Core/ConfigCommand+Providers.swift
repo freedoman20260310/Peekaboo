@@ -1,5 +1,6 @@
 import Commander
 import Foundation
+import os
 import PeekabooCore
 import PeekabooFoundation
 
@@ -16,17 +17,34 @@ func withTimeout<T: Sendable>(
     _ duration: Duration,
     operation: @escaping @Sendable () async -> T
 ) async -> Result<T, TimeoutError> {
-    await withTaskGroup(of: Result<T, TimeoutError>.self) { group in
-        group.addTask {
-            await .success(operation())
+    let state = OSAllocatedUnfairLock(initialState: false)
+
+    return await withUnsafeContinuation { (continuation: UnsafeContinuation<Result<T, TimeoutError>, Never>) in
+        let cont = continuation
+
+        Task {
+            let value = await operation()
+            let isFirst = state.withLock { done in
+                if done { return false }
+                done = true
+                return true
+            }
+            if isFirst {
+                cont.resume(returning: .success(value))
+            }
         }
-        group.addTask {
+
+        Task {
             try? await Task.sleep(for: duration)
-            return .failure(.timedOut)
+            let isFirst = state.withLock { done in
+                if done { return false }
+                done = true
+                return true
+            }
+            if isFirst {
+                cont.resume(returning: .failure(.timedOut))
+            }
         }
-        let result = await group.next()!
-        group.cancelAll()
-        return result
     }
 }
 

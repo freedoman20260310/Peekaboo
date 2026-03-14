@@ -715,6 +715,12 @@ extension ConfigurationManager {
         try data.write(to: URL(fileURLWithPath: Self.configPath), options: .atomic)
     }
 
+    /// Resolve a credential reference (e.g. `{env:VAR_NAME}`) to its actual value.
+    /// Returns the input unchanged if it's not a reference, or `nil` if the reference can't be resolved.
+    public func resolveCredentialReference(_ reference: String) -> String? {
+        self.resolveCredential(reference)
+    }
+
     private func resolveCredential(_ reference: String) -> String? {
         guard reference.hasPrefix("{env:"), reference.hasSuffix("}") else {
             return reference

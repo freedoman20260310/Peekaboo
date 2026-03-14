@@ -181,6 +181,7 @@ struct AnnotatedScreenshotView: View {
 // MARK: - Preview
 
 #if DEBUG
+#if ENABLE_PREVIEWS
 #Preview("Annotated Screenshot") {
     // Create sample data
     let sampleElements = [
@@ -208,6 +209,7 @@ struct AnnotatedScreenshotView: View {
         windowBounds: CGRect(x: 0, y: 0, width: 400, height: 300))
         .frame(width: 400, height: 300)
 }
+#endif
 #endif
 
 // MARK: - View Extensions

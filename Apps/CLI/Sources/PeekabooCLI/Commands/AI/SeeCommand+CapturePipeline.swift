@@ -18,7 +18,7 @@ extension SeeCommand {
         defer { self.logger.operationComplete("element_detection") }
 
         do {
-            return try await Self.withWallClockTimeout(seconds: 20.0) {
+            return try await Self.withSafeTimeout(seconds: 20.0) {
                 try await AutomationServiceBridge.detectElements(
                     automation: self.services.automation,
                     imageData: imageData,

@@ -147,27 +147,35 @@ struct ScrollAnimationView: View {
 // MARK: - Preview
 
 #if DEBUG
+#if ENABLE_PREVIEWS
 #Preview("Scroll Up") {
     ScrollAnimationView(direction: .up, amount: 3)
         .frame(width: 150, height: 150)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Scroll Down") {
     ScrollAnimationView(direction: .down, amount: 5)
         .frame(width: 150, height: 150)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Scroll Left") {
     ScrollAnimationView(direction: .left, amount: 10)
         .frame(width: 150, height: 150)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 
+#if ENABLE_PREVIEWS
 #Preview("Scroll Right") {
     ScrollAnimationView(direction: .right, amount: 1)
         .frame(width: 150, height: 150)
         .background(Color.gray.opacity(0.1))
 }
+#endif
 #endif
